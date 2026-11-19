@@ -19,19 +19,51 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Instalar Flutter
+      - name: 3. Instalar Flutter estable (3.29.3)
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.29.3'
           channel: 'stable'
 
-      - name: 4. Crear proyecto Android y desempaquetar el juego
+      - name: 4. Configurar repositorios de Gradle (evita error de Kotlin)
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat << 'EOF' > ~/.gradle/init.d/repos.gradle
+          beforeSettings { settings ->
+              settings.pluginManagement {
+                  repositories {
+                      google()
+                      mavenCentral()
+                      gradlePluginPortal()
+                  }
+              }
+          }
+          allprojects {
+              buildscript {
+                  repositories {
+                      google()
+                      mavenCentral()
+                      gradlePluginPortal()
+                  }
+              }
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+
+      - name: 5. Crear proyecto Android y desempaquetar última versión del juego
         run: |
           flutter create --platforms=android --org com.apexlife --project-name apex_life_f1 app_build
           python3 -c '
-          import glob, json, os
+          import glob, json, os, re
+
+          def orden_natural(texto):
+              return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", texto)]
 
           elegido = None
-          for path in sorted(glob.glob("**/*.json", recursive=True)):
+          for path in sorted(glob.glob("**/*.json", recursive=True), key=orden_natural):
               if path.startswith("app_build/"):
                   continue
               try:
@@ -43,7 +75,7 @@ jobs:
                   pass
 
           if not elegido:
-              raise FileNotFoundError("Sube el archivo apex_life_f1_v3.json a tu repositorio.")
+              raise FileNotFoundError("No se encontró ningún archivo JSON válido del juego en el repositorio.")
 
           print("Desempaquetando:", elegido[0])
           for rel_path, content in elegido[1].items():
@@ -53,13 +85,13 @@ jobs:
                   f.write(content)
           '
 
-      - name: 5. Compilar APK
+      - name: 6. Compilar APK
         working-directory: app_build
         run: |
           flutter pub get
           flutter build apk --release
 
-      - name: 6. Subir APK descargable
+      - name: 7. Subir APK descargable
         uses: actions/upload-artifact@v4
         with:
           name: apex-life-f1-apk
